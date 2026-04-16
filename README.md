@@ -1,6 +1,10 @@
-# TAN-Align: Sparse Tabular Experiments
+# Recursive Feature Alignment Machines (RFAMs)
 
-Reproduces the RFAM (Robust Functional Alignment Metric) results on 124 tabular classification benchmarks.
+RFAMs are an improvement on Recursive Feature Machines (RFMs) using the principles of normal alignment details in "Normal Alignment: The Geometric Structure of Models Learning Sparse Data."
+
+This code has been developed from https://github.com/aradha/recursive_feature_machines/tree/pip_install
+
+We test RFAMs on the tabular datasets of https://github.com/LeoYu/neural-tangent-kernel-UCI
 
 ## Requirements
 
@@ -16,8 +20,6 @@ pip install numpy scipy scikit-learn
 bash setup.sh
 ```
 
-Downloads and extracts the 124-dataset benchmark suite from the USC JMLR repository into `data/`.
-
 ### 2. Run training
 
 ```bash
@@ -26,7 +28,7 @@ python train.py -mode full -datadir data
 
 Runs a grid search over regularization and alpha hyperparameters, trains on k-fold splits, and writes results to `outputs/results_rfam_full.log`.
 
-To also run the alpha=0 baseline:
+To also run the alpha=0 (RFM) baseline:
 
 ```bash
 python train.py -mode alpha0 -datadir data
