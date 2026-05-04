@@ -9,6 +9,7 @@ def laplace_kernel_M(pair1, pair2, bandwidth, M):
     return classic_kernel.laplacian_M(pair1, pair2, bandwidth, M)
 
 
+@torch.no_grad()
 def get_grads(X, sol, L, P, compute_metrics=False):
     start = time.time()
     num_samples = 20000
@@ -95,6 +96,7 @@ def convert_one_hot(y, c):
     # PyTorch native one-hot encoding
     return F.one_hot(y.to(torch.int64), num_classes=c).float()
 
+@torch.no_grad()
 def hyperparam_train(X_train, y_train, X_test, y_test, c,
                      iters=5, reg=0, L=10, normalize=False,
                      alpha=0.1):
@@ -119,7 +121,8 @@ def hyperparam_train(X_train, y_train, X_test, y_test, c,
     n, d = X_train.shape
     
     # Initialize M as ridge-blended covariance (RFAM initialization)
-    cov_matrix = (X_train.T @ X_train) / (n - 1)
+    X_centered = X_train - X_train.mean(dim=0, keepdim=True)
+    cov_matrix = (X_centered.T @ X_centered) / (n - 1)
     identity = torch.eye(d, dtype=torch.float32, device=device)
     M = (1.0 - alpha) * cov_matrix + alpha * identity
     trace = torch.trace(M)
@@ -128,17 +131,18 @@ def hyperparam_train(X_train, y_train, X_test, y_test, c,
 
     for i in range(iters):
         K_train = laplace_kernel_M(X_train, X_train, L, M)
-        reg_matrix = reg * torch.eye(K_train.size(0), device=device)
-        
-        # GPU accelerated linear solve
-        sol = torch.linalg.solve(K_train + reg_matrix, y_train).T
+        K_train.diagonal().add_(reg)  # in-place: no extra n×n allocation
+        sol = torch.linalg.solve(K_train, y_train).T
+        del K_train
 
         K_test = laplace_kernel_M(X_train, X_test, L, M)
         preds = (sol @ K_test).T
+        del K_test
 
         preds_argmax = torch.argmax(preds, dim=-1)
         labels = torch.argmax(y_test, dim=-1)
         count = torch.sum(labels == preds_argmax).item()
+        del preds
 
         old_test_acc = count / len(labels)
 
@@ -146,8 +150,9 @@ def hyperparam_train(X_train, y_train, X_test, y_test, c,
             best_iter = i
             best_acc = old_test_acc
             best_M = M.clone()
-            
+
         M = get_grads(X_train, sol, L, M, compute_metrics=False)
+        del sol
         trace = torch.trace(M)
         if trace > 1e-10:
             M = M * (d / trace)
@@ -203,41 +208,42 @@ def train(X_train, y_train, X_test, y_test, c, M,
         X_test /= torch.norm(X_test, dim=-1, keepdim=True)
 
     # --- Standard Training ---
-    K_train = laplace_kernel_M(X_train, X_train, L, M)
-    reg_matrix = reg * torch.eye(K_train.size(0), device=device)
-    sol = torch.linalg.solve(K_train + reg_matrix, y_train).T
+    with torch.no_grad():
+        K_train = laplace_kernel_M(X_train, X_train, L, M)
+        K_train.diagonal().add_(reg)  # in-place: no extra n×n allocation
+        sol = torch.linalg.solve(K_train, y_train).T
+        del K_train
 
-    K_test = laplace_kernel_M(X_train, X_test, L, M)
-    preds = (sol @ K_test).T
+        K_test = laplace_kernel_M(X_train, X_test, L, M)
+        preds = (sol @ K_test).T
+        del K_test
 
-    preds_argmax = torch.argmax(preds, dim=-1)
-    labels = torch.argmax(y_test, dim=-1)
-    count = torch.sum(labels == preds_argmax).item()
-
-    acc = count / len(labels)
+        preds_argmax = torch.argmax(preds, dim=-1)
+        labels = torch.argmax(y_test, dim=-1)
+        count = torch.sum(labels == preds_argmax).item()
+        acc = count / len(labels)
+        del preds
     
-    # --- Adversarial ---
-    X_test_advs = {epsilon: pgd_attack(
-        X_train=X_train, 
-        X_test=X_test, 
-        y_test_labels=labels, 
-        sol=sol, 
-        L=L, 
-        M=M,
-        alpha=epsilon/10,
-        epsilon=epsilon,
-        normalize=normalize
-    ) for epsilon in epsilons}
-    
-    adv_robust_accs={}
-    for epsilon, X_test_adv in X_test_advs.items():
+    # --- Adversarial (one epsilon at a time to bound peak memory) ---
+    adv_robust_accs = {}
+    for epsilon in epsilons:
+        X_test_adv = pgd_attack(
+            X_train=X_train,
+            X_test=X_test,
+            y_test_labels=labels,
+            sol=sol,
+            L=L,
+            M=M,
+            alpha=epsilon/10,
+            epsilon=epsilon,
+            normalize=normalize,
+        )
         K_test_adv = laplace_kernel_M(X_train, X_test_adv, L, M)
         preds_adv = (sol @ K_test_adv).T
-        
         preds_adv_argmax = torch.argmax(preds_adv, dim=-1)
         count_adv = torch.sum(labels == preds_adv_argmax).item()
-        
         adv_robust_accs[epsilon] = count_adv / len(labels)
+        del X_test_adv, K_test_adv, preds_adv, preds_adv_argmax
 
     _, eff_rank, cos_sim = get_grads(X_train, sol, L, M, compute_metrics=True)
     

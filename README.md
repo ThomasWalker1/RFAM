@@ -1,6 +1,6 @@
 # Recursive Feature Alignment Machines (RFAMs)
 
-RFAMs are an improvement on Recursive Feature Machines (RFMs) using the principles of normal alignment details in "Normal Alignment: The Geometric Structure of Models Learning Sparse Data."
+RFAMs are an improvement on Recursive Feature Machines (RFMs) using the principles of normal alignment details in "The Geometric Structure of Models Learning Sparse Data."
 
 This code has been developed from https://github.com/aradha/recursive_feature_machines/tree/pip_install
 
@@ -23,18 +23,18 @@ bash setup.sh
 ### 2. Run training
 
 ```bash
-python train.py -mode full -datadir data
-```
-
-Runs a grid search over regularization and alpha hyperparameters, trains on k-fold splits, and writes results to `outputs/results_rfam_full.log`.
-
-To also run the alpha=0 (RFM) baseline:
-
-```bash
 python train.py -mode alpha0 -datadir data
 ```
 
-Writes results to `outputs/results_rfam_alpha0.log`.
+Runs a grid search over regularization hyperparameters, trains on k-fold splits, and writes results to `outputs/results_rfam_alpha0.log`.
+
+To also run the alpha=1 (RFM) baseline:
+
+```bash
+python train.py -mode alpha1 -datadir data
+```
+
+Writes results to `outputs/results_rfam_alpha1.log`.
 
 **Arguments:**
 
@@ -42,7 +42,7 @@ Writes results to `outputs/results_rfam_alpha0.log`.
 |------|---------|-------------|
 | `-datadir` | `data` | Path to the dataset directory |
 | `-outdir` | `outputs` | Path to the output directory |
-| `-mode` | `full` | `full` searches all alpha values; `alpha0` fixes alpha=0 |
+| `-mode` | `alpha0` | `alpha0` fixes alpha=0 |
 
 ### 3. Evaluate results
 
@@ -50,7 +50,7 @@ Writes results to `outputs/results_rfam_alpha0.log`.
 python eval.py
 ```
 
-Reads `outputs/results_rfam_alpha0.log` and `outputs/results_rfam_full.log` and prints summary statistics: test accuracy, normal alignment, normalized effective rank, and attack success rate per epsilon.
+Reads `outputs/results_rfam_alpha0.log` and `outputs/results_rfam_alpha1.log` and prints summary statistics: test accuracy, normal alignment, normalized effective rank, and attack success rate per epsilon.
 
 ## Run full experiment
 
